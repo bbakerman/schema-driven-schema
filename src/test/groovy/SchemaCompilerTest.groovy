@@ -16,13 +16,13 @@ class SchemaCompilerTest extends Specification {
         new SchemaCompiler().read(types)
     }
 
-    def "test full schema read"() {
+    def "test full schema compile"() {
 
         def types = read(SchemaDefinitions.ALL_DEFINED_TYPES)
         def typeRegistry = types.right().get()
         def parsedTypes = typeRegistry.types()
         def scalarTypes = typeRegistry.scalars()
-        def schemaDef = typeRegistry.schemaDefinitions()
+        def schemaDef = typeRegistry.schemaDefinition()
 
         expect:
 

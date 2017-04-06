@@ -6,8 +6,9 @@ import graphql.language.Type;
 import graphql.language.TypeName;
 import graphql.schema.GraphQLList;
 import graphql.schema.GraphQLNonNull;
-import graphql.schema.GraphQLObjectType;
-import graphql.schema.GraphQLOutputType;
+import graphql.schema.GraphQLType;
+
+import java.util.Stack;
 
 public class TypeInfo {
 
@@ -15,25 +16,24 @@ public class TypeInfo {
         return new TypeInfo(type);
     }
 
+    private final Type rawType;
+    private final TypeName typeName;
+    private final Stack<Class<?>> decoration = new Stack<>();
+
     public TypeInfo(Type type) {
         this.rawType = type;
         while (!(type instanceof TypeName)) {
             if (type instanceof NonNullType) {
-                isNonNull = true;
+                decoration.push(NonNullType.class);
                 type = ((NonNullType) type).getType();
             }
             if (type instanceof ListType) {
-                isList = true;
+                decoration.push(ListType.class);
                 type = ((ListType) type).getType();
             }
         }
         this.typeName = (TypeName) type;
     }
-
-    private final Type rawType;
-    private final TypeName typeName;
-    boolean isNonNull;
-    boolean isList;
 
     public Type getRawType() {
         return rawType;
@@ -47,12 +47,29 @@ public class TypeInfo {
         return typeName.getName();
     }
 
-    public boolean isNonNull() {
-        return isNonNull;
-    }
+    /**
+     * This will decorate a grapql type with the original hirearchy of non null and list ness
+     * it originally contained
+     * @param objectType this should be a graphql type that was originally built from this raw type
+     * @return the decorated type
+     */
+    public <T extends GraphQLType> T decorate(GraphQLType objectType) {
 
-    public boolean isList() {
-        return isList;
+        GraphQLType out = objectType;
+        Stack<Class<?>> wrappingStack = new Stack<>();
+        wrappingStack.addAll(this.decoration);
+        while (! wrappingStack.isEmpty()) {
+            Class<?> clazz = wrappingStack.pop();
+            if (clazz.equals(NonNullType.class)) {
+                out = new GraphQLNonNull(out);
+            }
+            if (clazz.equals(ListType.class)) {
+                out = new GraphQLList(out);
+            }
+        }
+        // we handle both input and output graphql types
+        //noinspection unchecked
+        return (T) out;
     }
 
     @Override
@@ -60,28 +77,8 @@ public class TypeInfo {
         return "TypeInfo{" +
                 "rawType=" + rawType +
                 ", typeName=" + typeName +
-                ", isNonNull=" + isNonNull +
-                ", isList=" + isList +
+                ", isNonNull=" + decoration +
                 '}';
     }
-
-    public GraphQLOutputType decorate(GraphQLOutputType objectType) {
-        // TODO
-        // this is not quite right yet
-        //
-        // we can have [ type ! ] !
-        // we can have [ type ! ]
-        // we can have [ type ] !
-
-        // fix this
-
-        GraphQLOutputType out = objectType;
-        if (isNonNull) {
-            out = new GraphQLNonNull(out);
-        }
-        if (isList) {
-            out = new GraphQLList(out);
-        }
-        return out;
-    }
 }
+
