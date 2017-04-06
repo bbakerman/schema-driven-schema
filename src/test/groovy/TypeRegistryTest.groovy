@@ -7,7 +7,7 @@ import spock.lang.Specification
 class TypeRegistryTest extends Specification {
 
     TypeRegistry compile(String spec) {
-        def types = new SchemaCompiler().read(spec)
+        def types = new SchemaCompiler().compile(spec)
         types.right().get()
     }
 

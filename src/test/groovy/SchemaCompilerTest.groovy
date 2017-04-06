@@ -13,7 +13,7 @@ import spock.lang.Specification
 class SchemaCompilerTest extends Specification {
 
     Either<List<GraphQLError>, TypeRegistry> read(String types) {
-        new SchemaCompiler().read(types)
+        new SchemaCompiler().compile(types)
     }
 
     def "test full schema compile"() {

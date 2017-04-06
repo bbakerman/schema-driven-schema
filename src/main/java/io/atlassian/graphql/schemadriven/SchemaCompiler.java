@@ -24,31 +24,31 @@ import java.util.List;
 
 public class SchemaCompiler {
 
-    public Either<List<GraphQLError>, TypeRegistry> read(URL url) {
+    public Either<List<GraphQLError>, TypeRegistry> compile(URL url) {
         try {
-            return read(IOUtils.toString(url.openStream(), Charset.defaultCharset()));
+            return compile(IOUtils.toString(url.openStream(), Charset.defaultCharset()));
         } catch (IOException e) {
             throw new RuntimeException(e);
         }
     }
 
-    public Either<List<GraphQLError>, TypeRegistry> read(File file) {
+    public Either<List<GraphQLError>, TypeRegistry> compile(File file) {
         try {
-            return read(new FileReader(file));
+            return compile(new FileReader(file));
         } catch (FileNotFoundException e) {
             throw new RuntimeException(e);
         }
     }
 
-    public Either<List<GraphQLError>, TypeRegistry> read(Reader reader) {
+    public Either<List<GraphQLError>, TypeRegistry> compile(Reader reader) {
         try {
-            return read(IOUtils.toString(reader));
+            return compile(IOUtils.toString(reader));
         } catch (IOException e) {
             throw new RuntimeException(e);
         }
     }
 
-    public Either<List<GraphQLError>, TypeRegistry> read(String schemaInput) {
+    public Either<List<GraphQLError>, TypeRegistry> compile(String schemaInput) {
         try {
             Parser parser = new Parser();
             Document document = parser.parseDocument(schemaInput);

@@ -7,7 +7,7 @@ class SchemaGeneratorTest extends Specification {
 
 
     GraphQLSchema generateSchema(String schemaSpec) {
-        def types = new SchemaCompiler().read(schemaSpec)
+        def types = new SchemaCompiler().compile(schemaSpec)
         def typeRegistry = types.right().get()
 
         def result = new SchemaGenerator().makeExecutableSchema(typeRegistry)
