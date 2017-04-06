@@ -4,6 +4,7 @@ import io.atlassian.fugue.Either;
 import io.atlassian.graphql.schemadriven.SchemaCompiler;
 import io.atlassian.graphql.schemadriven.SchemaGenerator;
 import io.atlassian.graphql.schemadriven.TypeRegistry;
+import io.atlassian.graphql.schemadriven.RuntimeWiring;
 
 import java.io.File;
 import java.util.List;
@@ -48,6 +49,7 @@ public class ReadmeExamples {
             "  mutation: Mutation\n" +
             "}";
 
+    @SuppressWarnings("ConstantConditions")
     void basicExample() {
 
         SchemaCompiler schemaCompiler = new SchemaCompiler();
@@ -66,7 +68,8 @@ public class ReadmeExamples {
 
         // but assuming it works
         TypeRegistry typeRegistry = compileResult.right().get();
-        Either<List<GraphQLError>, GraphQLSchema> generationResult = schemaGenerator.makeExecutableSchema(typeRegistry);
+        RuntimeWiring wiring = new RuntimeWiring();
+        Either<List<GraphQLError>, GraphQLSchema> generationResult = schemaGenerator.makeExecutableSchema(typeRegistry, wiring);
 
         //
         // again errors are reported via the left projection

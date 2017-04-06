@@ -1,7 +1,6 @@
 package io.atlassian.graphql.schemadriven;
 
 import graphql.GraphQLError;
-import graphql.Scalars;
 import graphql.language.ArrayValue;
 import graphql.language.BooleanValue;
 import graphql.language.EnumTypeDefinition;
@@ -22,6 +21,7 @@ import graphql.language.Type;
 import graphql.language.TypeDefinition;
 import graphql.language.UnionTypeDefinition;
 import graphql.language.Value;
+import graphql.schema.DataFetcher;
 import graphql.schema.GraphQLArgument;
 import graphql.schema.GraphQLEnumType;
 import graphql.schema.GraphQLFieldDefinition;
@@ -35,6 +35,8 @@ import graphql.schema.GraphQLScalarType;
 import graphql.schema.GraphQLSchema;
 import graphql.schema.GraphQLTypeReference;
 import graphql.schema.GraphQLUnionType;
+import graphql.schema.PropertyDataFetcher;
+import graphql.schema.TypeResolver;
 import graphql.schema.TypeResolverProxy;
 import io.atlassian.fugue.Either;
 import io.atlassian.graphql.schemadriven.errors.MissingScalarImplementationError;
@@ -52,70 +54,99 @@ import java.util.Stack;
 public class SchemaGenerator {
 
     private final SchemaTypeChecker typeChecker = new SchemaTypeChecker();
-    private final Map<String, GraphQLScalarType> scalars = new LinkedHashMap<>();
 
     public SchemaGenerator() {
-        addScalar(Scalars.GraphQLInt);
-        addScalar(Scalars.GraphQLFloat);
-        addScalar(Scalars.GraphQLString);
-        addScalar(Scalars.GraphQLBoolean);
-        addScalar(Scalars.GraphQLID);
-
-        addScalar(Scalars.GraphQLBigDecimal);
-        addScalar(Scalars.GraphQLBigInteger);
-        addScalar(Scalars.GraphQLByte);
-        addScalar(Scalars.GraphQLChar);
-        addScalar(Scalars.GraphQLShort);
-        addScalar(Scalars.GraphQLLong);
-
     }
 
-    private void addScalar(GraphQLScalarType scalarType) {
-        scalars.put(scalarType.getName(), scalarType);
-    }
-
-    public Either<List<GraphQLError>, GraphQLSchema> makeExecutableSchema(TypeRegistry typeRegistry) {
+    public Either<List<GraphQLError>, GraphQLSchema> makeExecutableSchema(TypeRegistry typeRegistry, RuntimeWiring wiring) {
         List<GraphQLError> errors = typeChecker.checkAllTypesPresent(typeRegistry);
-        errors.addAll(checkScalarImplementationsArePresent(typeRegistry));
+        errors.addAll(checkScalarImplementationsArePresent(typeRegistry, wiring));
+        errors.addAll(checkTypeResolversArePresent(typeRegistry, wiring));
         if (!errors.isEmpty()) {
             return Either.left(errors);
         }
-        return makeExecutableSchemaImpl(typeRegistry);
+        BuildContext buildCtx = new BuildContext(typeRegistry, wiring);
+
+        return makeExecutableSchemaImpl(buildCtx);
     }
 
-    private Collection<? extends GraphQLError> checkScalarImplementationsArePresent(TypeRegistry typeRegistry) {
+
+    private Collection<? extends GraphQLError> checkScalarImplementationsArePresent(TypeRegistry typeRegistry, RuntimeWiring wiring) {
         List<GraphQLError> errors = new ArrayList<>();
         typeRegistry.scalars().keySet().forEach(scalarName -> {
-            if (!scalars.containsKey(scalarName)) {
+            if (!wiring.getScalars().containsKey(scalarName)) {
                 errors.add(new MissingScalarImplementationError(scalarName));
             }
         });
         return errors;
     }
 
-    class BuildContext {
-        TypeRegistry typeRegistry;
-        Stack<String> definitionStack = new Stack<>();
-
-        Map<String, GraphQLOutputType> outputGTypes = new HashMap<>();
-        Map<String, GraphQLInputType> inputGTypes = new HashMap<>();
-
-        public BuildContext(TypeRegistry typeRegistry) {
-            this.typeRegistry = typeRegistry;
-        }
-
-        public <T extends GraphQLOutputType> T add(GraphQLOutputType graphQLOutputType) {
-            outputGTypes.put(graphQLOutputType.getName(), graphQLOutputType);
-            //noinspection unchecked
-            return (T) graphQLOutputType;
-        }
-
+    private Collection<? extends GraphQLError> checkTypeResolversArePresent(TypeRegistry typeRegistry, RuntimeWiring wiring) {
+        // TODO we should check that type resolvers are present
+        return Collections.emptyList();
     }
 
-    private Either<List<GraphQLError>, GraphQLSchema> makeExecutableSchemaImpl(TypeRegistry typeRegistry) {
-        BuildContext buildCtx = new BuildContext(typeRegistry);
+    /**
+     * We pass this around so we know what we have defined in a stack like manner plus
+     * it gives is helper
+     */
+    class BuildContext {
+        private final TypeRegistry typeRegistry;
+        private final RuntimeWiring wiring;
+        private final Stack<String> definitionStack = new Stack<>();
 
-        SchemaDefinition schemaDefinition = typeRegistry.schemaDefinition().get();
+        private final Map<String, GraphQLOutputType> outputGTypesx = new HashMap<>();
+        private final Map<String, GraphQLInputType> inputGTypesx = new HashMap<>();
+
+        BuildContext(TypeRegistry typeRegistry, RuntimeWiring wiring) {
+            this.typeRegistry = typeRegistry;
+            this.wiring = wiring;
+        }
+
+        TypeDefinition getTypeDefinition(Type type) {
+            return typeRegistry.getType(type).get();
+        }
+
+        boolean stackContains(TypeInfo typeInfo) {
+            return definitionStack.contains(typeInfo.getName());
+        }
+
+        void push(TypeInfo typeInfo) {
+            definitionStack.push(typeInfo.getName());
+        }
+
+        String pop() {
+            return definitionStack.pop();
+        }
+
+        GraphQLOutputType hasOutputType(TypeDefinition typeDefinition) {
+            return outputGTypesx.get(typeDefinition.getName());
+        }
+
+        GraphQLInputType hasInputType(TypeDefinition typeDefinition) {
+            return inputGTypesx.get(typeDefinition.getName());
+        }
+
+        void put(GraphQLOutputType outputType) {
+            outputGTypesx.put(outputType.getName(), outputType);
+        }
+
+        void put(GraphQLInputType inputType) {
+            inputGTypesx.put(inputType.getName(), inputType);
+        }
+
+        RuntimeWiring getWiring() {
+            return wiring;
+        }
+
+        public SchemaDefinition getSchemaDefinition() {
+            return typeRegistry.schemaDefinition().get();
+        }
+    }
+
+    private Either<List<GraphQLError>, GraphQLSchema> makeExecutableSchemaImpl(BuildContext buildCtx) {
+
+        SchemaDefinition schemaDefinition = buildCtx.getSchemaDefinition();
         List<OperationTypeDefinition> operationTypes = schemaDefinition.getOperationTypeDefinitions();
 
         // pre-flight checked via checker
@@ -137,7 +168,6 @@ public class SchemaGenerator {
     private GraphQLObjectType buildOperation(BuildContext buildCtx, OperationTypeDefinition operation) {
         Type type = operation.getType();
 
-        // TODO we should realy check that operations are object type definitions during pre-flight
         return buildOutputType(buildCtx, type);
     }
 
@@ -153,20 +183,21 @@ public class SchemaGenerator {
     @SuppressWarnings("unchecked")
     private <T extends GraphQLOutputType> T buildOutputType(BuildContext buildCtx, Type rawType) {
 
-        TypeDefinition typeDefinition = getTypeDefinition(buildCtx, rawType);
+        TypeDefinition typeDefinition = buildCtx.getTypeDefinition(rawType);
 
-        GraphQLOutputType outputType = buildCtx.outputGTypes.get(typeDefinition.getName());
+        GraphQLOutputType outputType = buildCtx.hasOutputType(typeDefinition);
         if (outputType != null) {
             return (T) outputType;
         }
         TypeInfo typeInfo = TypeInfo.typeInfo(rawType);
 
-        if (buildCtx.definitionStack.contains(typeInfo.getName())) {
-            // we have circled around so put in a type reference and fix it later
+        if (buildCtx.stackContains(typeInfo)) {
+            // we have circled around so put in a type reference and fix it up later
+            // otherwise we will go into an infinite loop
             return typeInfo.decorate(new GraphQLTypeReference(typeInfo.getName()));
         }
 
-        buildCtx.definitionStack.push(typeInfo.getName());
+        buildCtx.push(typeInfo);
 
         if (typeDefinition instanceof ObjectTypeDefinition) {
             outputType = buildObjectType(buildCtx, (ObjectTypeDefinition) typeDefinition);
@@ -177,41 +208,41 @@ public class SchemaGenerator {
         } else if (typeDefinition instanceof EnumTypeDefinition) {
             outputType = buildEnumType((EnumTypeDefinition) typeDefinition);
         } else {
-            outputType = buildScalar((ScalarTypeDefinition) typeDefinition);
+            outputType = buildScalar(buildCtx, (ScalarTypeDefinition) typeDefinition);
         }
 
-        buildCtx.outputGTypes.put(outputType.getName(), outputType);
-        buildCtx.definitionStack.pop();
+        buildCtx.put(outputType);
+        buildCtx.pop();
         return (T) typeInfo.decorate(outputType);
     }
 
     private GraphQLInputType buildInputType(BuildContext buildCtx, Type rawType) {
 
-        TypeDefinition typeDefinition = getTypeDefinition(buildCtx, rawType);
+        TypeDefinition typeDefinition = buildCtx.getTypeDefinition(rawType);
 
-        GraphQLInputType inputType = buildCtx.inputGTypes.get(typeDefinition.getName());
+        GraphQLInputType inputType = buildCtx.hasInputType(typeDefinition);
         if (inputType != null) {
             return inputType;
         }
         TypeInfo typeInfo = TypeInfo.typeInfo(rawType);
 
-        if (buildCtx.definitionStack.contains(typeInfo.getName())) {
+        if (buildCtx.stackContains(typeInfo)) {
             // we have circled around so put in a type reference and fix it later
             return typeInfo.decorate(new GraphQLTypeReference(typeInfo.getName()));
         }
 
-        buildCtx.definitionStack.push(typeInfo.getName());
+        buildCtx.push(typeInfo);
 
         if (typeDefinition instanceof InputObjectTypeDefinition) {
             inputType = buildInputObjectType(buildCtx, (InputObjectTypeDefinition) typeDefinition);
         } else if (typeDefinition instanceof EnumTypeDefinition) {
             inputType = buildEnumType((EnumTypeDefinition) typeDefinition);
         } else {
-            inputType = buildScalar((ScalarTypeDefinition) typeDefinition);
+            inputType = buildScalar(buildCtx, (ScalarTypeDefinition) typeDefinition);
         }
 
-        buildCtx.inputGTypes.put(inputType.getName(), inputType);
-        buildCtx.definitionStack.pop();
+        buildCtx.put(inputType);
+        buildCtx.pop();
         return typeInfo.decorate(inputType);
     }
 
@@ -221,7 +252,7 @@ public class SchemaGenerator {
         builder.description("#todo");
 
         typeDefinition.getFieldDefinitions().forEach(fieldDef ->
-                builder.field(buildField(buildCtx, fieldDef)));
+                builder.field(buildField(buildCtx, typeDefinition, fieldDef)));
 
         typeDefinition.getImplements().forEach(type -> builder.withInterface(buildOutputType(buildCtx, type)));
         return builder.build();
@@ -232,25 +263,25 @@ public class SchemaGenerator {
         builder.name(typeDefinition.getName());
         builder.description("#todo");
 
-        builder.typeResolver(defaultTypeResolver());
+        builder.typeResolver(getTypeResolver(buildCtx, typeDefinition.getName()));
 
         typeDefinition.getFieldDefinitions().forEach(fieldDef ->
-                builder.field(buildField(buildCtx, fieldDef)));
-        return buildCtx.add(builder.build());
+                builder.field(buildField(buildCtx, typeDefinition, fieldDef)));
+        return builder.build();
     }
 
     private GraphQLUnionType buildUnionType(BuildContext buildCtx, UnionTypeDefinition typeDefinition) {
         GraphQLUnionType.Builder builder = GraphQLUnionType.newUnionType();
         builder.name(typeDefinition.getName());
         builder.description("#todo");
-        builder.typeResolver(defaultTypeResolver());
+        builder.typeResolver(getTypeResolver(buildCtx, typeDefinition.getName()));
 
         typeDefinition.getMemberTypes().forEach(mt -> {
-            TypeDefinition memberTypeDef = getTypeDefinition(buildCtx, mt);
+            TypeDefinition memberTypeDef = buildCtx.getTypeDefinition(mt);
             GraphQLObjectType objectType = buildObjectType(buildCtx, (ObjectTypeDefinition) memberTypeDef);
             builder.possibleType(objectType);
         });
-        return buildCtx.add(builder.build());
+        return builder.build();
     }
 
     private GraphQLEnumType buildEnumType(EnumTypeDefinition typeDefinition) {
@@ -262,14 +293,16 @@ public class SchemaGenerator {
         return builder.build();
     }
 
-    private GraphQLScalarType buildScalar(ScalarTypeDefinition typeDefinition) {
-        return scalars.get(typeDefinition.getName());
+    private GraphQLScalarType buildScalar(BuildContext buildCtx, ScalarTypeDefinition typeDefinition) {
+        return buildCtx.getWiring().getScalars().get(typeDefinition.getName());
     }
 
-    private GraphQLFieldDefinition buildField(BuildContext buildCtx, FieldDefinition fieldDef) {
+    private GraphQLFieldDefinition buildField(BuildContext buildCtx, TypeDefinition parentType, FieldDefinition fieldDef) {
         GraphQLFieldDefinition.Builder builder = GraphQLFieldDefinition.newFieldDefinition();
         builder.name(fieldDef.getName());
         builder.description("#todo");
+
+        builder.dataFetcher(buildDataFetcher(buildCtx, parentType, fieldDef));
 
         fieldDef.getInputValueDefinitions().forEach(inputValueDefinition ->
                 builder.argument(buildArgument(buildCtx, inputValueDefinition)));
@@ -280,6 +313,18 @@ public class SchemaGenerator {
         return builder.build();
     }
 
+    private DataFetcher buildDataFetcher(BuildContext buildCtx, TypeDefinition parentType, FieldDefinition fieldDef) {
+        RuntimeWiring wiring = buildCtx.getWiring();
+        String fieldName = fieldDef.getName();
+        DataFetcher dataFetcher = wiring.getDataFetcherForType(parentType.getName()).get(fieldName);
+        if (dataFetcher == null) {
+            //
+            // in the future we could support FieldDateFetcher but we would need a way to indicate that in the schema spec
+            // perhaps by a directive
+            dataFetcher = new PropertyDataFetcher(fieldName);
+        }
+        return dataFetcher;
+    }
 
     private GraphQLInputObjectType buildInputObjectType(BuildContext buildCtx, InputObjectTypeDefinition typeDefinition) {
         GraphQLInputObjectType.Builder builder = GraphQLInputObjectType.newInputObject();
@@ -290,6 +335,7 @@ public class SchemaGenerator {
                 builder.field(buildInputField(buildCtx, fieldDef)));
         return builder.build();
     }
+
 
     private GraphQLInputObjectField buildInputField(BuildContext buildCtx, InputValueDefinition fieldDef) {
         GraphQLInputObjectField.Builder fieldBuilder = GraphQLInputObjectField.newInputObjectField();
@@ -335,19 +381,19 @@ public class SchemaGenerator {
 
     }
 
-
     private Object buildObjectValue(ObjectValue defaultValue) {
         HashMap<String, Object> map = new LinkedHashMap<>();
         defaultValue.getObjectFields().forEach(of -> map.put(of.getName(), buildValue(of.getValue())));
         return map;
     }
 
-    private TypeDefinition getTypeDefinition(BuildContext buildCtx, Type type) {
-        return buildCtx.typeRegistry.getType(type).get();
-    }
 
-    private TypeResolverProxy defaultTypeResolver() {
-        // TODO - we need to wire in a type resolver but we have no good way of doing that yet
-        return new TypeResolverProxy();
+    private TypeResolver getTypeResolver(BuildContext buildCtx, String name) {
+        TypeResolver typeResolver = buildCtx.getWiring().getTypeResolvers().get(name);
+        if (typeResolver == null) {
+            // this really should be checked earlier via a pre-flight check
+            typeResolver = new TypeResolverProxy();
+        }
+        return typeResolver;
     }
 }

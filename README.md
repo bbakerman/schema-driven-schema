@@ -1,6 +1,6 @@
 # schema-driven-schema
 
-This library allows for "schema first" development.
+This library allows for "schema driven" development of graphql applications.
 
 It will allow you to compile a set of schema files into a executable `GraphqlSchema`.
  
@@ -46,7 +46,7 @@ You could compile and generate an executable schema via
 ```java
         SchemaCompiler schemaCompiler = new SchemaCompiler();
         SchemaGenerator schemaGenerator = new SchemaGenerator();
-        
+
         File schemaFile = loadSchema();
 
         Either<List<GraphQLError>, TypeRegistry> compileResult = schemaCompiler.compile(schemaFile);
@@ -60,7 +60,8 @@ You could compile and generate an executable schema via
 
         // but assuming it works
         TypeRegistry typeRegistry = compileResult.right().get();
-        Either<List<GraphQLError>, GraphQLSchema> generationResult = schemaGenerator.makeExecutableSchema(typeRegistry);
+        RuntimeWiring wiring = new RuntimeWiring();
+        Either<List<GraphQLError>, GraphQLSchema> generationResult = schemaGenerator.makeExecutableSchema(typeRegistry, wiring);
 
         //
         // again errors are reported via the left projection

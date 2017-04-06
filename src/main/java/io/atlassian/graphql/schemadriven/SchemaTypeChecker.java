@@ -29,6 +29,11 @@ import static io.atlassian.graphql.schemadriven.TypeInfo.typeInfo;
 
 public class SchemaTypeChecker {
 
+
+    // TODO we should really check that operations are object type definitions during pre-flight
+
+
+
     public List<GraphQLError> checkAllTypesPresent(TypeRegistry typeRegistry) {
         List<GraphQLError> errors = new ArrayList<>();
 

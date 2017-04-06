@@ -1,4 +1,5 @@
 import graphql.schema.*
+import io.atlassian.graphql.schemadriven.RuntimeWiring
 import io.atlassian.graphql.schemadriven.SchemaCompiler
 import io.atlassian.graphql.schemadriven.SchemaGenerator
 import spock.lang.Specification
@@ -6,11 +7,11 @@ import spock.lang.Specification
 class SchemaGeneratorTest extends Specification {
 
 
-    GraphQLSchema generateSchema(String schemaSpec) {
+    GraphQLSchema generateSchema(String schemaSpec, RuntimeWiring wiring) {
         def types = new SchemaCompiler().compile(schemaSpec)
         def typeRegistry = types.right().get()
 
-        def result = new SchemaGenerator().makeExecutableSchema(typeRegistry)
+        def result = new SchemaGenerator().makeExecutableSchema(typeRegistry, wiring)
         assert result.isRight()
         result.right().get()
     }
@@ -81,7 +82,7 @@ class SchemaGeneratorTest extends Specification {
             }
         """
 
-        def schema = generateSchema(schemaSpec)
+        def schema = generateSchema(schemaSpec, new RuntimeWiring())
 
 
         expect:
@@ -152,7 +153,7 @@ class SchemaGeneratorTest extends Specification {
 
         """
 
-        def schema = generateSchema(spec)
+        def schema = generateSchema(spec, new RuntimeWiring())
 
         expect:
 
@@ -187,7 +188,16 @@ class SchemaGeneratorTest extends Specification {
 
         """
 
-        def schema = generateSchema(spec)
+        def resolver = new TypeResolver() {
+            @Override
+            GraphQLObjectType getType(Object object) {
+                throw new UnsupportedOperationException("Not implemented")
+            }
+        }
+        def wiring = new RuntimeWiring()
+        wiring.forType("Foo").typeResolver(resolver)
+
+        def schema = generateSchema(spec, wiring)
 
         expect:
 
