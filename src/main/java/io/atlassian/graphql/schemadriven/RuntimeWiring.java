@@ -1,7 +1,6 @@
 package io.atlassian.graphql.schemadriven;
 
 import graphql.Assert;
-import graphql.Scalars;
 import graphql.schema.DataFetcher;
 import graphql.schema.GraphQLScalarType;
 import graphql.schema.TypeResolver;
@@ -16,19 +15,7 @@ public class RuntimeWiring {
     private final Map<String, TypeResolver> typeResolvers = new LinkedHashMap<>();
 
     public RuntimeWiring() {
-        scalar(Scalars.GraphQLInt);
-        scalar(Scalars.GraphQLFloat);
-        scalar(Scalars.GraphQLString);
-        scalar(Scalars.GraphQLBoolean);
-        scalar(Scalars.GraphQLID);
-
-        scalar(Scalars.GraphQLBigDecimal);
-        scalar(Scalars.GraphQLBigInteger);
-        scalar(Scalars.GraphQLByte);
-        scalar(Scalars.GraphQLChar);
-        scalar(Scalars.GraphQLShort);
-        scalar(Scalars.GraphQLLong);
-
+        TypeInfo.STANDARD_SCALARS.forEach(this::scalar);
     }
 
     /**
@@ -36,8 +23,9 @@ public class RuntimeWiring {
      *
      * @param scalarType the new scalar implementation
      */
-    public void scalar(GraphQLScalarType scalarType) {
+    public RuntimeWiring scalar(GraphQLScalarType scalarType) {
         scalars.put(scalarType.getName(), scalarType);
+        return this;
     }
 
     public Map<String, GraphQLScalarType> getScalars() {
@@ -95,6 +83,10 @@ public class RuntimeWiring {
             Assert.assertNotNull(typeResolver, "you must provide a type resolver");
             typeResolvers.put(typeName, typeResolver);
             return this;
+        }
+
+        public RuntimeWiring endType() {
+            return RuntimeWiring.this;
         }
 
         public TypeWiring forType(String typeName) {

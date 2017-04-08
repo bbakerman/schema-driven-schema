@@ -39,10 +39,7 @@ import graphql.schema.PropertyDataFetcher;
 import graphql.schema.TypeResolver;
 import graphql.schema.TypeResolverProxy;
 import io.atlassian.fugue.Either;
-import io.atlassian.graphql.schemadriven.errors.MissingScalarImplementationError;
 
-import java.util.ArrayList;
-import java.util.Collection;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.LinkedHashMap;
@@ -59,31 +56,13 @@ public class SchemaGenerator {
     }
 
     public Either<List<GraphQLError>, GraphQLSchema> makeExecutableSchema(TypeRegistry typeRegistry, RuntimeWiring wiring) {
-        List<GraphQLError> errors = typeChecker.checkAllTypesPresent(typeRegistry);
-        errors.addAll(checkScalarImplementationsArePresent(typeRegistry, wiring));
-        errors.addAll(checkTypeResolversArePresent(typeRegistry, wiring));
+        List<GraphQLError> errors = typeChecker.checkTypeRegistry(typeRegistry, wiring);
         if (!errors.isEmpty()) {
             return Either.left(errors);
         }
         BuildContext buildCtx = new BuildContext(typeRegistry, wiring);
 
         return makeExecutableSchemaImpl(buildCtx);
-    }
-
-
-    private Collection<? extends GraphQLError> checkScalarImplementationsArePresent(TypeRegistry typeRegistry, RuntimeWiring wiring) {
-        List<GraphQLError> errors = new ArrayList<>();
-        typeRegistry.scalars().keySet().forEach(scalarName -> {
-            if (!wiring.getScalars().containsKey(scalarName)) {
-                errors.add(new MissingScalarImplementationError(scalarName));
-            }
-        });
-        return errors;
-    }
-
-    private Collection<? extends GraphQLError> checkTypeResolversArePresent(TypeRegistry typeRegistry, RuntimeWiring wiring) {
-        // TODO we should check that type resolvers are present
-        return Collections.emptyList();
     }
 
     /**
@@ -95,8 +74,8 @@ public class SchemaGenerator {
         private final RuntimeWiring wiring;
         private final Stack<String> definitionStack = new Stack<>();
 
-        private final Map<String, GraphQLOutputType> outputGTypesx = new HashMap<>();
-        private final Map<String, GraphQLInputType> inputGTypesx = new HashMap<>();
+        private final Map<String, GraphQLOutputType> outputGTypes = new HashMap<>();
+        private final Map<String, GraphQLInputType> inputGTypes = new HashMap<>();
 
         BuildContext(TypeRegistry typeRegistry, RuntimeWiring wiring) {
             this.typeRegistry = typeRegistry;
@@ -120,19 +99,19 @@ public class SchemaGenerator {
         }
 
         GraphQLOutputType hasOutputType(TypeDefinition typeDefinition) {
-            return outputGTypesx.get(typeDefinition.getName());
+            return outputGTypes.get(typeDefinition.getName());
         }
 
         GraphQLInputType hasInputType(TypeDefinition typeDefinition) {
-            return inputGTypesx.get(typeDefinition.getName());
+            return inputGTypes.get(typeDefinition.getName());
         }
 
         void put(GraphQLOutputType outputType) {
-            outputGTypesx.put(outputType.getName(), outputType);
+            outputGTypes.put(outputType.getName(), outputType);
         }
 
         void put(GraphQLInputType inputType) {
-            inputGTypesx.put(inputType.getName(), inputType);
+            inputGTypes.put(inputType.getName(), inputType);
         }
 
         RuntimeWiring getWiring() {

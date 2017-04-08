@@ -196,6 +196,7 @@ class SchemaGeneratorTest extends Specification {
         }
         def wiring = new RuntimeWiring()
         wiring.forType("Foo").typeResolver(resolver)
+        wiring.forType("Goo").typeResolver(resolver)
 
         def schema = generateSchema(spec, wiring)
 

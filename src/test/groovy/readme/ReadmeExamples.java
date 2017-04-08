@@ -1,53 +1,21 @@
+package readme;
+
 import graphql.GraphQLError;
 import graphql.schema.GraphQLSchema;
 import io.atlassian.fugue.Either;
+import io.atlassian.graphql.schemadriven.RuntimeWiring;
 import io.atlassian.graphql.schemadriven.SchemaCompiler;
 import io.atlassian.graphql.schemadriven.SchemaGenerator;
 import io.atlassian.graphql.schemadriven.TypeRegistry;
-import io.atlassian.graphql.schemadriven.RuntimeWiring;
 
 import java.io.File;
 import java.util.List;
 
 /**
- * TODO: Document this class / interface here
- *
- * @since v0.x
+ * This is where we put README.md examples so they compile
  */
 @SuppressWarnings("unused")
 public class ReadmeExamples {
-
-    public static final String SCHEMA_SPECIFICATION = "" +
-            "type Author {\n" +
-            "  id: Int!\n" +
-            "  firstName: String\n" +
-            "  lastName: String\n" +
-            "  posts: [Post] \n" +
-            "}\n" +
-            "\n" +
-            "type Post {\n" +
-            "  id: Int!\n" +
-            "  title: String\n" +
-            "  votes: Int\n" +
-            "  author: Author\n" +
-            "}\n" +
-            "\n" +
-            "type Query {\n" +
-            "  posts: [Post]\n" +
-            "  author(id: Int!): Author \n" +
-            "}\n" +
-            "\n" +
-            "\n" +
-            "type Mutation {\n" +
-            "  upvotePost (\n" +
-            "    postId: Int!\n" +
-            "  ): Post\n" +
-            "}\n" +
-            "\n" +
-            "schema {\n" +
-            "  query: Query\n" +
-            "  mutation: Mutation\n" +
-            "}";
 
     @SuppressWarnings("ConstantConditions")
     void basicExample() {

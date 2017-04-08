@@ -1,16 +1,40 @@
 package io.atlassian.graphql.schemadriven;
 
+import graphql.Scalars;
 import graphql.language.ListType;
 import graphql.language.NonNullType;
 import graphql.language.Type;
 import graphql.language.TypeName;
 import graphql.schema.GraphQLList;
 import graphql.schema.GraphQLNonNull;
+import graphql.schema.GraphQLScalarType;
 import graphql.schema.GraphQLType;
 
+import java.util.ArrayList;
+import java.util.List;
 import java.util.Stack;
 
 public class TypeInfo {
+    
+    public static final List<GraphQLScalarType> STANDARD_SCALARS= new ArrayList<>();
+    static {
+        STANDARD_SCALARS.add(Scalars.GraphQLInt);
+        STANDARD_SCALARS.add(Scalars.GraphQLFloat);
+        STANDARD_SCALARS.add(Scalars.GraphQLString);
+        STANDARD_SCALARS.add(Scalars.GraphQLBoolean);
+        STANDARD_SCALARS.add(Scalars.GraphQLID);
+
+        STANDARD_SCALARS.add(Scalars.GraphQLBigDecimal);
+        STANDARD_SCALARS.add(Scalars.GraphQLBigInteger);
+        STANDARD_SCALARS.add(Scalars.GraphQLByte);
+        STANDARD_SCALARS.add(Scalars.GraphQLChar);
+        STANDARD_SCALARS.add(Scalars.GraphQLShort);
+        STANDARD_SCALARS.add(Scalars.GraphQLLong);
+    }
+
+    public static boolean isStandardScalar(GraphQLScalarType scalarType) {
+        return STANDARD_SCALARS.stream().anyMatch(sc -> sc.getName().equals(scalarType.getName()));
+    }
 
     public static TypeInfo typeInfo(Type type) {
         return new TypeInfo(type);

@@ -1,4 +1,5 @@
 import graphql.GraphQLError
+import io.atlassian.graphql.schemadriven.RuntimeWiring
 import io.atlassian.graphql.schemadriven.SchemaCompiler
 import io.atlassian.graphql.schemadriven.SchemaTypeChecker
 import io.atlassian.graphql.schemadriven.TypeRegistry
@@ -15,7 +16,8 @@ class SchemaTypeCheckerTest extends Specification {
     List<GraphQLError> check(String spec) {
         def types = compile(spec)
 
-        def result = new SchemaTypeChecker().checkAllTypesPresent(types)
+        def wiring = new RuntimeWiring()
+        def result = new SchemaTypeChecker().checkTypeRegistry(types, wiring)
         result
     }
 
@@ -146,6 +148,22 @@ class SchemaTypeCheckerTest extends Specification {
         expect:
 
         result.get(0).getMessage().contains("The operation type 'MissingType' is not present when resolving type 'query'")
+    }
+
+    def "test operation type is not an object"() {
+
+        def spec = """                       
+
+            schema {
+              query : Int
+            }
+        """
+
+        def result = check(spec)
+
+        expect:
+
+        result.get(0).getMessage().contains("The operation type 'query' MUST have a object type as its definition")
     }
 
 }

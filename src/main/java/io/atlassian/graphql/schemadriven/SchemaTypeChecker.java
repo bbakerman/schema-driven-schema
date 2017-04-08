@@ -13,7 +13,11 @@ import graphql.language.TypeDefinition;
 import graphql.language.TypeExtensionDefinition;
 import graphql.language.TypeName;
 import graphql.language.UnionTypeDefinition;
+import io.atlassian.fugue.Option;
+import io.atlassian.graphql.schemadriven.errors.MissingScalarImplementationError;
 import io.atlassian.graphql.schemadriven.errors.MissingTypeError;
+import io.atlassian.graphql.schemadriven.errors.MissingTypeResolverError;
+import io.atlassian.graphql.schemadriven.errors.OperationTypesMustBeObjects;
 import io.atlassian.graphql.schemadriven.errors.QueryOperationMissingError;
 import io.atlassian.graphql.schemadriven.errors.SchemaMissingError;
 
@@ -27,16 +31,49 @@ import java.util.stream.Collectors;
 
 import static io.atlassian.graphql.schemadriven.TypeInfo.typeInfo;
 
+/**
+ * This helps pre check the state of the type system to ensure it can be made into an executable schema.
+ *
+ * It looks for missing types and ensure certain invariants are true before a schema can be made.
+ */
 public class SchemaTypeChecker {
 
-
-    // TODO we should really check that operations are object type definitions during pre-flight
-
-
-
-    public List<GraphQLError> checkAllTypesPresent(TypeRegistry typeRegistry) {
+    public List<GraphQLError> checkTypeRegistry(TypeRegistry typeRegistry, RuntimeWiring wiring) {
         List<GraphQLError> errors = new ArrayList<>();
+        checkForMissingTypes(errors, typeRegistry);
+        checkSchemaInvariants(errors, typeRegistry);
 
+        checkScalarImplementationsArePresent(errors, typeRegistry, wiring);
+        checkTypeResolversArePresent(errors, typeRegistry, wiring);
+
+        return errors;
+
+    }
+
+    private void checkSchemaInvariants(List<GraphQLError> errors, TypeRegistry typeRegistry) {
+        // schema
+        if (typeRegistry.schemaDefinition().isEmpty()) {
+            errors.add(new SchemaMissingError());
+        } else {
+            SchemaDefinition schemaDefinition = typeRegistry.schemaDefinition().get();
+            List<OperationTypeDefinition> operationTypeDefinitions = schemaDefinition.getOperationTypeDefinitions();
+
+            operationTypeDefinitions
+                    .forEach(checkOperationTypesExist(typeRegistry, errors));
+
+            operationTypeDefinitions
+                    .forEach(checkOperationTypesAreObjects(typeRegistry, errors));
+
+            // ensure we have a "query" one
+            Optional<OperationTypeDefinition> query = operationTypeDefinitions.stream().filter(op -> "query".equals(op.getName())).findFirst();
+            if (!query.isPresent()) {
+                errors.add(new QueryOperationMissingError());
+            }
+
+        }
+    }
+
+    private void checkForMissingTypes(List<GraphQLError> errors, TypeRegistry typeRegistry) {
         // type extensions
         Collection<TypeExtensionDefinition> typeExtensions = typeRegistry.typeExtensions().values();
         typeExtensions.forEach(typeExtension -> {
@@ -91,27 +128,30 @@ public class SchemaTypeChecker {
             inputValueTypes.forEach(checkTypeExists("input value", typeRegistry, errors, inputType));
 
         });
+    }
 
-        // schema
-        if (typeRegistry.schemaDefinition().isEmpty()) {
-            errors.add(new SchemaMissingError());
-        } else {
-            SchemaDefinition schemaDefinition = typeRegistry.schemaDefinition().get();
-            List<OperationTypeDefinition> operationTypeDefinitions = schemaDefinition.getOperationTypeDefinitions();
-
-            operationTypeDefinitions
-                    .forEach(checkOperationTypesExist(typeRegistry, errors));
-
-            // ensure we have a "query" one
-            Optional<OperationTypeDefinition> query = operationTypeDefinitions.stream().filter(op -> "query".equals(op.getName())).findFirst();
-            if (! query.isPresent()) {
-                errors.add(new QueryOperationMissingError());
+    private void checkScalarImplementationsArePresent(List<GraphQLError> errors, TypeRegistry typeRegistry, RuntimeWiring wiring) {
+        typeRegistry.scalars().keySet().forEach(scalarName -> {
+            if (!wiring.getScalars().containsKey(scalarName)) {
+                errors.add(new MissingScalarImplementationError(scalarName));
             }
-        }
+        });
+    }
 
-        return errors;
+    private void checkTypeResolversArePresent(List<GraphQLError> errors, TypeRegistry typeRegistry, RuntimeWiring wiring) {
+
+        Consumer<TypeDefinition> checkForResolver = typeDef -> {
+            if (!wiring.getTypeResolvers().containsKey(typeDef.getName())) {
+                errors.add(new MissingTypeResolverError(typeDef));
+            }
+        };
+
+        typeRegistry.types().values().stream()
+                .filter(typeDef -> typeDef instanceof InterfaceTypeDefinition || typeDef instanceof UnionTypeDefinition)
+                .forEach(checkForResolver);
 
     }
+
 
     private void checkFieldTypesPresent(TypeRegistry typeRegistry, List<GraphQLError> errors, TypeDefinition typeDefinition, List<FieldDefinition> fields) {
         List<Type> fieldTypes = fields.stream().map(FieldDefinition::getType).collect(Collectors.toList());
@@ -142,6 +182,17 @@ public class SchemaTypeChecker {
             TypeName unwrapped = typeInfo(op.getType()).getTypeName();
             if (!typeRegistry.hasType(unwrapped)) {
                 errors.add(new MissingTypeError("operation", op, op.getName(), unwrapped));
+            }
+        };
+    }
+
+    private Consumer<OperationTypeDefinition> checkOperationTypesAreObjects(TypeRegistry typeRegistry, List<GraphQLError> errors) {
+        return op -> {
+            // make sure it is defined as a ObjectTypeDef
+            Type queryType = op.getType();
+            Option<TypeDefinition> type = typeRegistry.getType(queryType);
+            if (!type.exists(typeDef -> typeDef instanceof ObjectTypeDefinition)) {
+                errors.add(new OperationTypesMustBeObjects(op));
             }
         };
     }
